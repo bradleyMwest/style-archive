@@ -1,4 +1,3 @@
-import { Buffer } from 'node:buffer';
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '../../../lib/prisma';
 import { buildCachedHeroImage, downloadHeroImage, toHeroImageBytes } from '../../../lib/hero-image';

@@ -37,3 +37,19 @@ export interface OutfitSuggestion {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface StyleProfile {
+  selfDescription?: string | null;
+  styleGoals?: string | null;
+  lifestyleNotes?: string | null;
+  fitNotes?: string | null;
+  preferredBrands?: string | null;
+  favoriteColors?: string | null;
+  budgetFocus?: string | null;
+  ageRange?: string | null;
+  location?: string | null;
+  climate?: string | null;
+  aiSummary?: string | null;
+  aiKeywords?: string | null;
+  aiUpdatedAt?: string | null;
+}

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import { prisma } from '../../lib/prisma';
 import { getRequestUser } from '../../lib/api-auth';
+import { searchRakutenProducts, type RakutenProduct } from '../../lib/rakuten';
 
 export const runtime = 'nodejs';
 
@@ -9,64 +10,61 @@ const openaiApiKey = process.env.OPENAI_API_KEY;
 const openai = openaiApiKey ? new OpenAI({ apiKey: openaiApiKey }) : null;
 const MODEL = process.env.SHOP_RECOMMENDER_MODEL || 'gpt-4o-mini';
 
-type Suggestion = {
-  category: string;
-  description: string;
-  searchQueries: string[];
-  suggestedBrands: string[];
-  priceAnchors: string;
-  reason: string;
+type ComplementaryQuery = {
+  baseItemId: string;
+  complementaryCategory: string;
+  searchQuery: string;
+  reasoning: string;
+  priceExpectation: string;
 };
 
-const BRAND_CATALOG = [
-  {
-    name: 'Taylor Stitch',
-    url: 'https://www.taylorstitch.com/search?type=product&q=',
-    tags: ['workwear', 'overshirt', 'rugged'],
-  },
-  {
-    name: 'Quince',
-    url: 'https://www.quince.com/search?query=',
-    tags: ['essentials', 'cashmere', 'silk'],
-  },
-  {
-    name: 'Everlane',
-    url: 'https://www.everlane.com/search?q=',
-    tags: ['minimal', 'denim', 'outerwear'],
-  },
-  {
-    name: 'Greats',
-    url: 'https://www.greats.com/search?q=',
-    tags: ['sneakers', 'leather'],
-  },
-] as const;
+type Suggestion = {
+  baseItem: {
+    id: string;
+    name: string;
+    color: string;
+    image: string | null;
+  };
+  complementaryCategory: string;
+  searchQuery: string;
+  reasoning: string;
+  priceExpectation: string;
+  products: RakutenProduct[];
+};
 
-const DUMMY_SUGGESTIONS: Suggestion[] = [
-  {
-    category: 'Overshirt Layer',
-    description: 'Mid-weight cotton or denim overshirt that can layer over tees and flannels.',
-    searchQueries: ['selvedge overshirt', 'indigo chore shirt'],
-    suggestedBrands: ['Taylor Stitch', 'Quince'],
-    priceAnchors: '$120-$160',
-    reason: 'Your wardrobe leans denim/casual; a rugged overshirt adds depth without clashing.',
-  },
-  {
-    category: 'Minimal Leather Sneakers',
-    description: 'Neutral court-inspired sneakers with low profile and leather upper.',
-    searchQueries: ['minimal white sneaker', 'off-white leather trainer'],
-    suggestedBrands: ['Greats', 'Everlane'],
-    priceAnchors: '$100-$150',
-    reason: 'Contrast nicely with your darker denim and match the muted palette you own.',
-  },
-];
+const formatStyleProfile = (profile?: {
+  selfDescription: string | null;
+  styleGoals: string | null;
+  lifestyleNotes: string | null;
+  fitNotes: string | null;
+  preferredBrands: string | null;
+  favoriteColors: string | null;
+  budgetFocus: string | null;
+  ageRange: string | null;
+  location: string | null;
+  climate: string | null;
+  aiSummary: string | null;
+  aiKeywords: string | null;
+} | null) => {
+  if (!profile) return 'User has not filled out their style profile yet.';
+  const parts = [
+    profile.aiSummary,
+    profile.selfDescription,
+    profile.styleGoals ? `Goals: ${profile.styleGoals}` : null,
+    profile.lifestyleNotes ? `Lifestyle: ${profile.lifestyleNotes}` : null,
+    profile.fitNotes ? `Fit notes: ${profile.fitNotes}` : null,
+    profile.preferredBrands ? `Fav brands: ${profile.preferredBrands}` : null,
+    profile.favoriteColors ? `Colors: ${profile.favoriteColors}` : null,
+    profile.budgetFocus ? `Budget focus: ${profile.budgetFocus}` : null,
+    profile.ageRange ? `Age range: ${profile.ageRange}` : null,
+    profile.location ? `Location: ${profile.location}` : null,
+    profile.climate ? `Climate: ${profile.climate}` : null,
+    profile.aiKeywords ? `Keywords: ${profile.aiKeywords}` : null,
+  ].filter((entry): entry is string => Boolean(entry && entry.trim().length > 0));
+  return parts.join('\n');
+};
 
-const summarizeInventory = (items: { id: string; name: string; type: string; color: string; brand: string | null }[]) =>
-  items
-    .map(
-      (item) =>
-        `${item.name} (${item.type}) in ${item.color}${item.brand ? ` by ${item.brand}` : ''}`
-    )
-    .join('\n');
+const DUMMY_SUGGESTIONS: Suggestion[] = [];
 
 const extractJson = (raw: string) => {
   const match = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
@@ -80,26 +78,48 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const items = await prisma.item.findMany({
-      where: { userId: user.id },
-      select: { id: true, name: true, type: true, color: true, brand: true },
-      orderBy: { dateAdded: 'desc' },
-      take: 40,
-    });
+    const [items, styleProfile] = await Promise.all([
+      prisma.item.findMany({
+        where: { userId: user.id },
+        select: { id: true, name: true, type: true, color: true, brand: true, image: true },
+        orderBy: { dateAdded: 'desc' },
+        take: 40,
+      }),
+      prisma.styleProfile.findUnique({ where: { userId: user.id } }),
+    ]);
 
     if (!openai || items.length === 0) {
-      return NextResponse.json({ suggestions: DUMMY_SUGGESTIONS, source: 'fallback' });
+      return NextResponse.json({
+        suggestions: DUMMY_SUGGESTIONS,
+        source: 'fallback',
+        profileUsed: Boolean(styleProfile),
+        profileSummary: styleProfile?.aiSummary ?? null,
+      });
     }
 
-    const catalogSummary = BRAND_CATALOG.map(
-      (brand) => `${brand.name}: ${brand.tags.join(', ')}`
-    ).join('\n');
+    const profileContext = formatStyleProfile(styleProfile);
+    const prompt = `You are a wardrobe stylist who pairs existing closet pieces with new complementary items found online.
 
-    const prompt = `You are a personal shopper. Given the wardrobe inventory below, suggest up to 4 categories of items to add. For each suggestion provide: category, description, up to 3 product search queries (strings a user can paste into brand sites), 2 suggested brand names chosen from this catalog (only use brands listed), price range guidance, and a short reason referencing the wardrobe.\n\nBrand Catalog:\n${catalogSummary}\n\nInventory:\n${summarizeInventory(items)}\n\nRespond ONLY with valid JSON: array of objects with keys category, description, searchQueries (array of strings), suggestedBrands (array of catalog brand names), priceAnchors, reason. No URLs.`;
+Inventory Items (include id field in responses):
+${items
+  .map((item) => `- ${item.id}: ${item.name} (${item.type}) in ${item.color}${item.brand ? ` by ${item.brand}` : ''}`)
+  .join('\n')}
+
+Style Profile:
+${profileContext}
+
+Select up to 4 base items (choose by id) that would benefit from a complementary purchase. For each selected item, return an object with:
+- "baseItemId": string id from the list above
+- "complementaryCategory": short label of what to buy (e.g., "Weatherproof boots")
+- "searchQuery": concise keyword string for a shopping API (no punctuation besides spaces)
+- "reasoning": one sentence explaining the pairing
+- "priceExpectation": e.g., "$120-$200 leather boots"
+
+Respond ONLY with valid JSON array (no markdown).`;
 
     const completion = await openai.chat.completions.create({
       model: MODEL,
-      temperature: 0.6,
+      temperature: 0.4,
       messages: [{ role: 'user', content: prompt }],
     });
 
@@ -118,29 +138,77 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ suggestions: DUMMY_SUGGESTIONS, source: 'fallback' });
     }
 
-    const suggestions: Suggestion[] = Array.isArray(parsed)
+    const plannedQueries: ComplementaryQuery[] = Array.isArray(parsed)
       ? parsed
-          .map((entry) => ({
-            category: typeof entry.category === 'string' ? entry.category : 'Suggested piece',
-            description: typeof entry.description === 'string' ? entry.description : '',
-            searchQueries: Array.isArray(entry.searchQueries)
-              ? entry.searchQueries.filter((q: unknown): q is string => typeof q === 'string')
-              : [],
-            suggestedBrands: Array.isArray(entry.suggestedBrands)
-              ? entry.suggestedBrands
-                  .filter((name: unknown): name is string => typeof name === 'string')
-                  .filter((name: string) => BRAND_CATALOG.some((brand) => brand.name === name))
-              : [],
-            priceAnchors: typeof entry.priceAnchors === 'string' ? entry.priceAnchors : '$100-$200',
-            reason: typeof entry.reason === 'string' ? entry.reason : 'Complements your wardrobe.',
-          }))
-          .filter((entry) => entry.searchQueries.length > 0 || entry.description)
-          .slice(0, 6)
-      : DUMMY_SUGGESTIONS;
+          .map((entry): ComplementaryQuery | null => {
+            if (!entry || typeof entry !== 'object') return null;
+            const record = entry as Record<string, unknown>;
+            const baseItemId = typeof record.baseItemId === 'string' ? record.baseItemId : null;
+            if (!baseItemId) return null;
+            const complementaryCategory =
+              typeof record.complementaryCategory === 'string'
+                ? record.complementaryCategory
+                : 'Complementary piece';
+            const searchQuery = typeof record.searchQuery === 'string' ? record.searchQuery : '';
+            if (!searchQuery) return null;
+            const reasoning =
+              typeof record.reasoning === 'string' ? record.reasoning : 'Pairs well with current wardrobe.';
+            const priceExpectation =
+              typeof record.priceExpectation === 'string' ? record.priceExpectation : 'Typical price varies.';
+            return {
+              baseItemId,
+              complementaryCategory,
+              searchQuery,
+              reasoning,
+              priceExpectation,
+            };
+          })
+          .filter((entry): entry is ComplementaryQuery => Boolean(entry))
+          .slice(0, 4)
+      : [];
 
-    return NextResponse.json({ suggestions, source: 'llm' });
+    if (plannedQueries.length === 0) {
+      return NextResponse.json({ suggestions: DUMMY_SUGGESTIONS, source: 'fallback' });
+    }
+
+    const suggestionsWithProducts = await Promise.all(
+      plannedQueries.map(async (planned) => {
+        const baseItem = items.find((item) => item.id === planned.baseItemId);
+        if (!baseItem) return null;
+        const products = await searchRakutenProducts(planned.searchQuery, { limit: 4 });
+        const normalizedImage: string | null =
+          typeof baseItem.image === 'string' && baseItem.image.length > 0 ? baseItem.image : null;
+        return {
+          baseItem: {
+            id: baseItem.id,
+            name: baseItem.name,
+            color: baseItem.color,
+            image: normalizedImage,
+          },
+          complementaryCategory: planned.complementaryCategory,
+          searchQuery: planned.searchQuery,
+          reasoning: planned.reasoning,
+          priceExpectation: planned.priceExpectation,
+          products,
+        };
+      })
+    );
+
+    const filteredSuggestions = suggestionsWithProducts.filter((entry): entry is Suggestion => Boolean(entry));
+
+    return NextResponse.json({
+      suggestions: filteredSuggestions,
+      source: 'rakuten',
+      profileUsed: Boolean(styleProfile),
+      profileSummary: styleProfile?.aiSummary ?? null,
+    });
   } catch (error) {
     console.error('Failed to generate shop recommendations', error);
-    return NextResponse.json({ suggestions: DUMMY_SUGGESTIONS, source: 'fallback' });
+    return NextResponse.json({
+      suggestions: DUMMY_SUGGESTIONS,
+      source: 'fallback',
+      profileUsed: false,
+      profileSummary: null,
+    });
   }
 }

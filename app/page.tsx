@@ -11,7 +11,7 @@ export default async function Home() {
         <p className="text-lg text-gray-600 mb-8">
           Organize your wardrobe, plan perfect outfits, and discover new items that match your style.
         </p>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
           <div className="bg-white p-6 rounded-lg shadow-md">
             <h2 className="text-xl font-semibold mb-2">Inventory</h2>
             <p className="text-gray-600 mb-4">
@@ -34,6 +34,18 @@ export default async function Home() {
               className="inline-block bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
             >
               Plan Outfits
+            </a>
+          </div>
+          <div className="bg-white p-6 rounded-lg shadow-md">
+            <h2 className="text-xl font-semibold mb-2">My Style</h2>
+            <p className="text-gray-600 mb-4">
+              Capture your style story and demographics so recommendations feel made for you.
+            </p>
+            <a
+              href="/style"
+              className="inline-block bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+            >
+              Edit Profile
             </a>
           </div>
           <div className="bg-white p-6 rounded-lg shadow-md">

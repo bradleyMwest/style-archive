@@ -78,6 +78,29 @@ model User {
   items        Item[]
   outfits      Outfit[]
   outfitSuggestions OutfitSuggestion[]
+  styleProfile StyleProfile?
+}
+
+model StyleProfile {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  selfDescription String?
+  styleGoals      String?
+  lifestyleNotes  String?
+  fitNotes        String?
+  preferredBrands String?
+  favoriteColors  String?
+  budgetFocus     String?
+  ageRange        String?
+  location        String?
+  climate         String?
+  aiSummary       String?
+  aiKeywords      String?
+  aiUpdatedAt     DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Session {
