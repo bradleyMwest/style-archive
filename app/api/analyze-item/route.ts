@@ -1,7 +1,7 @@
 import OpenAI from 'openai';
 import { NextRequest, NextResponse } from 'next/server';
 import { load, CheerioAPI } from 'cheerio';
-import { isLikelyShopifyProductUrl, normalizeShopifyMetadata } from '../../lib/shopify';
+import { isLikelyShopifyProductUrl, normalizeShopifyMetadata, type ShopifyProduct } from '../../lib/shopify';
 import { fetchShopifyProduct } from '../../lib/shopify-fetch';
 
 const IMAGE_ATTRS = ['data-src', 'data-original', 'data-image', 'data-lazy-src', 'data-hi-res-src', 'src'];
@@ -229,7 +229,7 @@ Return a JSON object ONLY with keys: type, color, size, tags, name, material, br
 
         if (isLikelyShopifyProductUrl(url)) {
           try {
-            const shopifyProduct = await fetchShopifyProduct(url);
+            const shopifyProduct: ShopifyProduct = await fetchShopifyProduct(url);
             const shopifyMetadata = normalizeShopifyMetadata(shopifyProduct, url);
             return NextResponse.json(shopifyMetadata);
           } catch (shopifyError) {
