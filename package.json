@@ -1,15 +1,24 @@
 {
-  "name": "wardrobe",
+  "name": "style-archive",
   "version": "0.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:shopify": "tsx scripts/test-shopify-metadata.ts",
+    "backfill:hero-images": "tsx scripts/backfill-hero-images.ts",
+    "backfill:prices": "tsx scripts/backfill-prices.ts"
   },
   "dependencies": {
+    "@prisma/adapter-better-sqlite3": "^7.6.0",
+    "@prisma/client": "^7.6.0",
+    "cheerio": "^1.2.0",
     "next": "16.2.2",
+    "openai": "^6.33.0",
+    "playwright": "^1.59.0",
+    "prisma": "^7.6.0",
     "react": "19.2.4",
     "react-dom": "19.2.4"
   },
@@ -21,6 +30,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.2",
     "tailwindcss": "^4",
+    "tsx": "^4.21.0",
     "typescript": "^5"
   }
 }

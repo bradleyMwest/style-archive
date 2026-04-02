@@ -1,6 +1,12 @@
 {
     "chat.tools.terminal.autoApprove": {
         "brew": true,
-        "npx create-next-app@latest": true
+        "npx create-next-app@latest": true,
+        "npm install": true,
+        "npx prisma": true,
+        "/^node -e \"const p=require\\('@prisma/client'\\); console\\.log\\(Object\\.keys\\(p\\)\\);\"$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
     }
 }
