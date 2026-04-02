@@ -115,9 +115,7 @@ const openai = process.env.OPENAI_API_KEY
   ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
   : null;
 
-type ChatContentPart =
-  | OpenAI.Chat.Completions.ChatCompletionContentPartInputText
-  | OpenAI.Chat.Completions.ChatCompletionContentPartInputImage;
+type ChatContentPart = OpenAI.Chat.Completions.ChatCompletionContentPart;
 
 export async function POST(request: NextRequest) {
   const user = await getRequestUser(request);
@@ -274,10 +272,10 @@ Return a JSON object ONLY with keys: type, color, size, tags, name, material, br
       return NextResponse.json({ error: 'LLM not configured' }, { status: 500 });
     }
 
-    const contentParts: ChatContentPart[] = [{ type: 'input_text', text: prompt }];
+    const contentParts: ChatContentPart[] = [{ type: 'text', text: prompt }];
     if (inlineImageData) {
       contentParts.push({
-        type: 'input_image',
+        type: 'image_url',
         image_url: { url: inlineImageData },
       });
     }

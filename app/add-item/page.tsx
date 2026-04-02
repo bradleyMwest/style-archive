@@ -42,10 +42,7 @@ const loadItemForEdit = async (id: string, userId: string) => {
 
 export default async function AddItemPage({ searchParams }: PageProps) {
   const user = await requireUser();
-  const resolvedSearchParams: SearchParams =
-    searchParams && typeof (searchParams as Promise<SearchParams>).then === 'function'
-      ? await (searchParams as Promise<SearchParams>)
-      : searchParams ?? {};
+  const resolvedSearchParams: SearchParams = (await Promise.resolve(searchParams)) ?? {};
   const editId = resolvedSearchParams?.edit ?? null;
   let initialItem = null;
   if (editId) {
