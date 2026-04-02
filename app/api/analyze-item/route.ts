@@ -110,9 +110,9 @@ const fetchListingHtml = async (url: string): Promise<string> => {
   return pageResp.text();
 };
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+const openai = process.env.OPENAI_API_KEY
+  ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  : null;
 
 export async function POST(request: NextRequest) {
   const user = await getRequestUser(request);
@@ -252,6 +252,10 @@ Return a JSON object ONLY with keys: type, color, size, tags, name, material, br
       }
     } else {
       prompt = composeDescriptionPrompt(normalizedInput);
+    }
+
+    if (!openai) {
+      return NextResponse.json({ error: 'LLM not configured' }, { status: 500 });
     }
 
     const completion = await openai.chat.completions.create({

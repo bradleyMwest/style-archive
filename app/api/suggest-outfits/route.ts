@@ -22,12 +22,11 @@ export async function POST(request: NextRequest) {
       take: 30,
     });
 
-    if (!openai) {
-      return NextResponse.json({ error: 'LLM not configured' }, { status: 500 });
-    }
-
     if (items.length < 2) {
       return NextResponse.json({ suggestions: [], warning: 'Need at least two items to build outfits.' });
+    }
+    if (!openai) {
+      return NextResponse.json({ error: 'LLM not configured' }, { status: 500 });
     }
 
     const inventorySummary = items
