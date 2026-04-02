@@ -2,8 +2,10 @@ import AddItemClient from './AddItemClient';
 import { prisma } from '../lib/prisma';
 import { requireUser } from '../lib/auth';
 
+type SearchParams = { edit?: string };
+
 interface PageProps {
-  searchParams?: { edit?: string };
+  searchParams?: SearchParams | Promise<SearchParams>;
 }
 
 const formatTags = (raw: string | null) => {
@@ -40,7 +42,11 @@ const loadItemForEdit = async (id: string, userId: string) => {
 
 export default async function AddItemPage({ searchParams }: PageProps) {
   const user = await requireUser();
-  const editId = searchParams?.edit ?? null;
+  const resolvedSearchParams: SearchParams =
+    searchParams && typeof (searchParams as Promise<SearchParams>).then === 'function'
+      ? await (searchParams as Promise<SearchParams>)
+      : searchParams ?? {};
+  const editId = resolvedSearchParams?.edit ?? null;
   let initialItem = null;
   if (editId) {
     initialItem = await loadItemForEdit(editId, user.id);

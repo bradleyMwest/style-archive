@@ -8,6 +8,7 @@ import { getRequestUser } from '../../lib/api-auth';
 const IMAGE_ATTRS = ['data-src', 'data-original', 'data-image', 'data-lazy-src', 'data-hi-res-src', 'src'];
 const SRCSET_ATTRS = ['data-srcset', 'data-src-set', 'srcset'];
 const MAX_SCRAPED_IMAGES = 12;
+const isDataImageUri = (value: string) => /^data:image\//i.test(value);
 
 const BROWSER_HEADERS = {
   'User-Agent':
@@ -114,6 +115,10 @@ const openai = process.env.OPENAI_API_KEY
   ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
   : null;
 
+type ChatContentPart =
+  | OpenAI.Chat.Completions.ChatCompletionContentPartInputText
+  | OpenAI.Chat.Completions.ChatCompletionContentPartInputImage;
+
 export async function POST(request: NextRequest) {
   const user = await getRequestUser(request);
   if (!user) {
@@ -121,7 +126,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { input, type } = await request.json(); // type: 'url', 'listing', or 'description'
+    const { input, type } = await request.json(); // type: 'url', 'listing', 'description', or 'photo'
 
     if (!input) {
       return NextResponse.json({ error: 'Input is required' }, { status: 400 });
@@ -136,8 +141,9 @@ export async function POST(request: NextRequest) {
     let prompt = '';
     let scrapedImages: string[] = [];
     let listingUrlFromInput: string | undefined;
+    let inlineImageData: string | null = null;
 
-    const baseImagePrompt = (url: string) => `Analyze this clothing item image and extract the following metadata.
+const baseImagePrompt = (url: string) => `Analyze this clothing item image and extract the following metadata.
 Return a JSON object ONLY, with these keys: type, color, size, tags, name, material, brand.
 Do not add any explanatory text.
 
@@ -154,7 +160,11 @@ Example:
 
 Image URL: ${url}`;
 
-    const composeDescriptionPrompt = (description: string) => `Analyze this clothing item description and extract the following metadata.
+const buildCapturedPhotoPrompt = () => `Analyze this user-provided closet photo and extract the following metadata.
+Return a JSON object ONLY, with these keys: type, color, size, tags, name, material, brand.
+Do not add any explanatory text.`;
+
+const composeDescriptionPrompt = (description: string) => `Analyze this clothing item description and extract the following metadata.
 Return a JSON object ONLY, with these keys: type, color, size, tags, name, material, brand.
 Do not add any explanatory text.
 
@@ -223,7 +233,13 @@ ${productInfo}
 Return a JSON object ONLY with keys: type, color, size, tags, name, material, brand, listingUrl. The listingUrl must echo the product URL. Do not add any extra narrative text.`;
     };
 
-    if (type === 'url' || type === 'listing') {
+    if (type === 'photo' || (type === 'url' && isDataImageUri(normalizedInput))) {
+      if (!isDataImageUri(normalizedInput)) {
+        return NextResponse.json({ error: 'Photo input must be a base64-encoded data URL' }, { status: 400 });
+      }
+      inlineImageData = normalizedInput;
+      prompt = buildCapturedPhotoPrompt();
+    } else if (type === 'url' || type === 'listing') {
       const url = normalizedInput;
       const imageExtensions = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.svg'];
       const isDirectImage = imageExtensions.some((ext) => url.toLowerCase().endsWith(ext));
@@ -258,12 +274,20 @@ Return a JSON object ONLY with keys: type, color, size, tags, name, material, br
       return NextResponse.json({ error: 'LLM not configured' }, { status: 500 });
     }
 
+    const contentParts: ChatContentPart[] = [{ type: 'input_text', text: prompt }];
+    if (inlineImageData) {
+      contentParts.push({
+        type: 'input_image',
+        image_url: { url: inlineImageData },
+      });
+    }
+
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
         {
           role: 'user',
-          content: prompt,
+          content: contentParts,
         },
       ],
       temperature: 0.3,
