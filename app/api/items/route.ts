@@ -1,14 +1,24 @@
-import { Buffer } from 'node:buffer';
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '../../lib/prisma';
-import { buildCachedHeroImage, downloadHeroImage } from '../../lib/hero-image';
+import { buildCachedHeroImage, downloadHeroImage, toHeroImageBytes } from '../../lib/hero-image';
+import { getRequestUser } from '../../lib/api-auth';
+
+type HeroImageBytes = ReturnType<typeof toHeroImageBytes>;
 
 export const runtime = 'nodejs';
 
-export async function GET() {
-  const items = await prisma.item.findMany({ orderBy: { dateAdded: 'desc' } });
+export async function GET(request: NextRequest) {
+  const user = await getRequestUser(request);
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
 
-  const formattedItems = items.map((item) => ({
+  const items = await prisma.item.findMany({
+    where: { userId: user.id },
+    orderBy: { dateAdded: 'desc' },
+  });
+
+  const formattedItems = items.map((item: (typeof items)[number]) => ({
     id: item.id,
     name: item.name,
     type: item.type,
@@ -19,7 +29,12 @@ export async function GET() {
       mimeType: item.heroImageMimeType,
       fallbackUrl: item.image,
     }),
-    tags: item.tags ? item.tags.split(',').map((tag) => tag.trim()) : [],
+    tags: item.tags
+      ? item.tags
+          .split(',')
+          .map((tag: string) => tag.trim())
+          .filter((tag: string) => tag.length > 0)
+      : [],
     images: item.images ? JSON.parse(item.images) : [],
     material: item.material,
     brand: item.brand,
@@ -39,6 +54,11 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const user = await getRequestUser(request);
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   try {
     const body = await request.json();
     const {
@@ -73,12 +93,12 @@ export async function POST(request: NextRequest) {
           .filter((url: string) => url.length > 0)
       : [];
 
-    let heroImageData: Buffer | undefined;
+    let heroImageData: HeroImageBytes | null = null;
     let heroImageMimeType: string | undefined;
     try {
       const downloaded = await downloadHeroImage(image);
       if (downloaded) {
-        heroImageData = downloaded.data;
+        heroImageData = toHeroImageBytes(downloaded.data);
         heroImageMimeType = downloaded.mimeType;
       }
     } catch (downloadError) {
@@ -100,8 +120,9 @@ export async function POST(request: NextRequest) {
         description: description || null,
         priceAmount: typeof priceAmount === 'number' && !Number.isNaN(priceAmount) ? priceAmount : null,
         priceCurrency: priceCurrency || null,
-        heroImageData: heroImageData ?? null,
+        heroImageData,
         heroImageMimeType: heroImageMimeType ?? null,
+        userId: user.id,
       },
     });
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '../../lib/prisma';
+import { getRequestUser } from '../../lib/api-auth';
 
 export const runtime = 'nodejs';
 
@@ -18,33 +19,48 @@ const parseItemIds = (itemIds: string | null) => {
 const filterExistingItemIds = (itemIds: string[], validIds: Set<string>) =>
   itemIds.filter((id) => validIds.has(id));
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const user = await getRequestUser(request);
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   const [outfits, inventoryIds] = await Promise.all([
     prisma.outfit.findMany({
+      where: { userId: user.id },
       orderBy: { createdAt: 'desc' },
     }),
-    prisma.item.findMany({ select: { id: true } }),
+    prisma.item.findMany({ where: { userId: user.id }, select: { id: true } }),
   ]);
 
-  const validIds = new Set(inventoryIds.map((entry) => entry.id));
+  const validIds = new Set<string>(
+    inventoryIds.map((entry: (typeof inventoryIds)[number]) => entry.id)
+  );
 
-  const formatted = outfits
-    .map((outfit) => {
-      const filteredItemIds = filterExistingItemIds(parseItemIds(outfit.itemIds), validIds);
-      return {
-        id: outfit.id,
-        name: outfit.name,
-        description: outfit.description ?? '',
-        itemIds: filteredItemIds,
-        createdAt: outfit.createdAt,
-      };
-    })
-    .filter((outfit) => outfit.itemIds.length > 0);
+  const mappedOutfits = outfits.map((outfit: (typeof outfits)[number]) => {
+    const filteredItemIds = filterExistingItemIds(parseItemIds(outfit.itemIds), validIds);
+    return {
+      id: outfit.id,
+      name: outfit.name,
+      description: outfit.description ?? '',
+      itemIds: filteredItemIds,
+      createdAt: outfit.createdAt,
+    };
+  });
+
+  const formatted = mappedOutfits.filter(
+    (outfit: (typeof mappedOutfits)[number]) => outfit.itemIds.length > 0
+  );
 
   return NextResponse.json({ outfits: formatted });
 }
 
 export async function POST(request: NextRequest) {
+  const user = await getRequestUser(request);
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   try {
     const body = await request.json();
     const name = typeof body?.name === 'string' ? body.name.trim() : '';
@@ -64,6 +80,7 @@ export async function POST(request: NextRequest) {
         name,
         description: description || null,
         itemIds: JSON.stringify(itemIds),
+        userId: user.id,
       },
     });
 

@@ -4,8 +4,7 @@
 // Get a free hosted Postgres database in seconds: `npx create-db`
 
 generator client {
-  provider = "prisma-client"
-  output   = "../app/generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
@@ -30,6 +29,11 @@ model Item {
   brand     String?
   listingUrl String?
   dateAdded DateTime @default(now())
+  userId    String?
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model OutfitSuggestion {
@@ -42,6 +46,11 @@ model OutfitSuggestion {
   status      String   @default("try")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  userId      String?
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model Outfit {
@@ -50,4 +59,35 @@ model Outfit {
   itemIds     String   // JSON array of item IDs
   description String?
   createdAt   DateTime @default(now())
+  userId      String?
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  name         String?
+  passwordHash String
+  role         String    @default("user")
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  sessions     Session[]
+  items        Item[]
+  outfits      Outfit[]
+  outfitSuggestions OutfitSuggestion[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  @@index([userId])
+  @@index([expiresAt])
 }

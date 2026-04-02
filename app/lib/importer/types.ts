@@ -15,8 +15,12 @@ export interface ProductPrice {
 export interface PartialProductFields {
   title?: string;
   brand?: string;
+  type?: string;
   color?: string;
+  size?: string;
+  material?: string;
   description?: string;
+  tags?: string[];
   price?: ProductPrice;
   images?: string[];
   sku?: string;

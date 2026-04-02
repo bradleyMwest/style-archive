@@ -1,5 +1,6 @@
 import AddItemClient from './AddItemClient';
 import { prisma } from '../lib/prisma';
+import { requireUser } from '../lib/auth';
 
 interface PageProps {
   searchParams?: { edit?: string };
@@ -14,8 +15,8 @@ const formatTags = (raw: string | null) => {
     .join(', ');
 };
 
-const loadItemForEdit = async (id: string) => {
-  const item = await prisma.item.findUnique({ where: { id } });
+const loadItemForEdit = async (id: string, userId: string) => {
+  const item = await prisma.item.findFirst({ where: { id, userId } });
   if (!item) return null;
 
   return {
@@ -38,10 +39,11 @@ const loadItemForEdit = async (id: string) => {
 };
 
 export default async function AddItemPage({ searchParams }: PageProps) {
+  const user = await requireUser();
   const editId = searchParams?.edit ?? null;
   let initialItem = null;
   if (editId) {
-    initialItem = await loadItemForEdit(editId);
+    initialItem = await loadItemForEdit(editId, user.id);
   }
 
   return <AddItemClient editId={editId} initialItem={initialItem ?? undefined} />;

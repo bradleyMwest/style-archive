@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '../../../lib/prisma';
+import { getRequestUser } from '../../../lib/api-auth';
 
 export const runtime = 'nodejs';
 
@@ -10,6 +11,11 @@ const isValidStatus = (value: unknown): value is OutfitSuggestionStatus =>
   typeof value === 'string' && VALID_STATUSES.includes(value as OutfitSuggestionStatus);
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const user = await getRequestUser(request);
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   try {
     const { id } = await params;
     const body = await request.json();
@@ -19,8 +25,16 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       return NextResponse.json({ error: 'Invalid status' }, { status: 400 });
     }
 
+    const suggestion = await prisma.outfitSuggestion.findFirst({
+      where: { id, userId: user.id },
+    });
+
+    if (!suggestion) {
+      return NextResponse.json({ error: 'Suggestion not found' }, { status: 404 });
+    }
+
     const updated = await prisma.outfitSuggestion.update({
-      where: { id },
+      where: { id: suggestion.id },
       data: { status: nextStatus },
     });
 
@@ -31,12 +45,25 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   }
 }
 
-export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const user = await getRequestUser(request);
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   try {
     const { id } = await params;
 
+    const suggestion = await prisma.outfitSuggestion.findFirst({
+      where: { id, userId: user.id },
+    });
+
+    if (!suggestion) {
+      return NextResponse.json({ error: 'Suggestion not found' }, { status: 404 });
+    }
+
     await prisma.outfitSuggestion.delete({
-      where: { id },
+      where: { id: suggestion.id },
     });
 
     return NextResponse.json({ id, deleted: true });

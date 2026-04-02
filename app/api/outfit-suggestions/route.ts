@@ -1,5 +1,6 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '../../lib/prisma';
+import { getRequestUser } from '../../lib/api-auth';
 
 export const runtime = 'nodejs';
 
@@ -44,15 +45,23 @@ const formatSuggestion =
     updatedAt: entry.updatedAt,
   });
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const user = await getRequestUser(request);
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   const [rows, inventoryIds] = await Promise.all([
     prisma.outfitSuggestion.findMany({
+      where: { userId: user.id },
       orderBy: [{ status: 'asc' }, { updatedAt: 'desc' }],
     }),
-    prisma.item.findMany({ select: { id: true } }),
+    prisma.item.findMany({ where: { userId: user.id }, select: { id: true } }),
   ]);
 
-  const validIds = new Set(inventoryIds.map((entry) => entry.id));
+  const validIds = new Set<string>(
+    inventoryIds.map((entry: (typeof inventoryIds)[number]) => entry.id)
+  );
   const formatted = rows.map(formatSuggestion(validIds));
   return NextResponse.json({ suggestions: formatted });
 }

@@ -1,6 +1,10 @@
+import { Buffer } from 'node:buffer';
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '../../../lib/prisma';
-import { buildCachedHeroImage, downloadHeroImage } from '../../../lib/hero-image';
+import { buildCachedHeroImage, downloadHeroImage, toHeroImageBytes } from '../../../lib/hero-image';
+import { getRequestUser } from '../../../lib/api-auth';
+
+type HeroImageBytes = ReturnType<typeof toHeroImageBytes>;
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -10,11 +14,16 @@ interface RouteParams {
 }
 
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
+  const user = await getRequestUser(request);
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   try {
     const { id } = await params;
 
-    const existingItem = await prisma.item.findUnique({
-      where: { id },
+    const existingItem = await prisma.item.findFirst({
+      where: { id, userId: user.id },
     });
 
     if (!existingItem) {
@@ -22,9 +31,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     }
 
     // Delete the item
-    await prisma.item.delete({
-      where: { id },
-    });
+    await prisma.item.delete({ where: { id } });
 
     return NextResponse.json({ message: 'Item deleted successfully' });
   } catch (error) {
@@ -33,10 +40,15 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
   }
 }
 
-export async function GET(_request: NextRequest, { params }: RouteParams) {
+export async function GET(request: NextRequest, { params }: RouteParams) {
+  const user = await getRequestUser(request);
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   try {
     const { id } = await params;
-    const item = await prisma.item.findUnique({ where: { id } });
+    const item = await prisma.item.findFirst({ where: { id, userId: user.id } });
     if (!item) {
       return NextResponse.json({ error: 'Item not found' }, { status: 404 });
     }
@@ -52,7 +64,12 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
         mimeType: item.heroImageMimeType,
         fallbackUrl: item.image,
       }),
-      tags: item.tags ? item.tags.split(',').map((tag) => tag.trim()).filter(Boolean) : [],
+      tags: item.tags
+        ? item.tags
+            .split(',')
+            .map((tag: string) => tag.trim())
+            .filter((tag: string) => tag.length > 0)
+        : [],
       images: item.images ? JSON.parse(item.images) : [],
       material: item.material ?? null,
       brand: item.brand ?? null,
@@ -70,6 +87,11 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
 }
 
 export async function PUT(request: NextRequest, { params }: RouteParams) {
+  const user = await getRequestUser(request);
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   try {
     const { id } = await params;
     const body = await request.json();
@@ -94,8 +116,8 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     }
 
     // Check if item exists
-    const existingItem = await prisma.item.findUnique({
-      where: { id },
+    const existingItem = await prisma.item.findFirst({
+      where: { id, userId: user.id },
     });
 
     if (!existingItem) {
@@ -117,19 +139,22 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     const normalizedListingUrl =
       typeof listingUrl === 'string' ? listingUrl.trim() : '';
 
-    let heroImageData = existingItem.heroImageData;
+    let heroImageData: HeroImageBytes | null = existingItem.heroImageData;
     let heroImageMimeType = existingItem.heroImageMimeType;
     if (image !== existingItem.image || !existingItem.heroImageData) {
       try {
         const downloaded = await downloadHeroImage(image);
         if (downloaded) {
-          heroImageData = downloaded.data;
+          heroImageData = toHeroImageBytes(downloaded.data);
           heroImageMimeType = downloaded.mimeType;
         }
       } catch (error) {
         console.warn('Unable to refresh hero image cache', error);
       }
     }
+
+    const resolvedHeroImageData: HeroImageBytes | null =
+      heroImageData ?? existingItem.heroImageData ?? null;
 
     const updatedItem = await prisma.item.update({
       where: { id },
@@ -158,8 +183,9 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
           typeof priceCurrency === 'string' && priceCurrency.trim().length > 0
             ? priceCurrency
             : existingItem.priceCurrency,
-        heroImageData: heroImageData ?? existingItem.heroImageData,
+        heroImageData: resolvedHeroImageData,
         heroImageMimeType: heroImageMimeType ?? existingItem.heroImageMimeType,
+        userId: user.id,
       },
     });
 

@@ -1,6 +1,7 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import { prisma } from '../../lib/prisma';
+import { getRequestUser } from '../../lib/api-auth';
 
 export const runtime = 'nodejs';
 
@@ -8,9 +9,15 @@ const openaiApiKey = process.env.OPENAI_API_KEY;
 const openai = openaiApiKey ? new OpenAI({ apiKey: openaiApiKey }) : null;
 const MODEL = process.env.OUTFIT_SUGGESTION_MODEL || 'gpt-4o-mini';
 
-export async function POST() {
+export async function POST(request: NextRequest) {
+  const user = await getRequestUser(request);
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   try {
     const items = await prisma.item.findMany({
+      where: { userId: user.id },
       orderBy: { dateAdded: 'desc' },
       take: 30,
     });
@@ -25,7 +32,7 @@ export async function POST() {
 
     const inventorySummary = items
       .map(
-        (item) =>
+        (item: (typeof items)[number]) =>
           `ID: ${item.id}\nName: ${item.name}\nType: ${item.type}\nColor: ${item.color}\nSize: ${item.size}\nMaterial: ${item.material ?? 'Unknown'}\nTags: ${item.tags}\n`
       )
       .join('\n');
@@ -61,9 +68,11 @@ export async function POST() {
       return NextResponse.json({ error: 'Failed to parse LLM output' }, { status: 500 });
     }
 
+    type RawSuggestion = Record<string, unknown>;
+
     const suggestions = Array.isArray(parsed)
       ? parsed
-          .map((entry) => {
+          .map((entry: RawSuggestion) => {
             const itemIds = Array.isArray(entry.itemIds)
               ? Array.from(
                   new Set(entry.itemIds.filter((id: unknown): id is string => typeof id === 'string'))
@@ -87,16 +96,23 @@ export async function POST() {
     }
 
     const existing = await prisma.outfitSuggestion.findMany({
-      where: { itemHash: { in: suggestions.map((entry) => entry.itemHash) } },
+      where: {
+        userId: user.id,
+        itemHash: { in: suggestions.map((entry: (typeof suggestions)[number]) => entry.itemHash) },
+      },
     });
-    const existingHashes = new Set(existing.map((entry) => entry.itemHash));
+    const existingHashes = new Set<string>(
+      existing.map((entry: (typeof existing)[number]) => entry.itemHash)
+    );
 
-    const creations = suggestions.filter((entry) => !existingHashes.has(entry.itemHash));
+    const creations = suggestions.filter(
+      (entry: (typeof suggestions)[number]) => !existingHashes.has(entry.itemHash)
+    );
 
     const createdRecords =
       creations.length > 0
         ? await prisma.$transaction(
-            creations.map((entry) =>
+            creations.map((entry: (typeof creations)[number]) =>
               prisma.outfitSuggestion.create({
                 data: {
                   name: entry.name,
@@ -104,6 +120,7 @@ export async function POST() {
                   reasoning: entry.reasoning,
                   itemIds: JSON.stringify(entry.itemIds),
                   itemHash: entry.itemHash,
+                  userId: user.id,
                 },
               })
             )
@@ -113,7 +130,7 @@ export async function POST() {
     return NextResponse.json({
       created: createdRecords.length,
       skipped: suggestions.length - creations.length,
-      newSuggestions: createdRecords.map((record) => ({
+      newSuggestions: createdRecords.map((record: (typeof createdRecords)[number]) => ({
         id: record.id,
         name: record.name,
         description: record.description ?? '',

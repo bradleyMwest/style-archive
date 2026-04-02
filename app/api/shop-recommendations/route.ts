@@ -1,6 +1,7 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import { prisma } from '../../lib/prisma';
+import { getRequestUser } from '../../lib/api-auth';
 
 export const runtime = 'nodejs';
 
@@ -72,9 +73,15 @@ const extractJson = (raw: string) => {
   return match ? match[1].trim() : raw;
 };
 
-export async function POST() {
+export async function POST(request: NextRequest) {
+  const user = await getRequestUser(request);
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   try {
     const items = await prisma.item.findMany({
+      where: { userId: user.id },
       select: { id: true, name: true, type: true, color: true, brand: true },
       orderBy: { dateAdded: 'desc' },
       take: 40,
@@ -122,7 +129,7 @@ export async function POST() {
             suggestedBrands: Array.isArray(entry.suggestedBrands)
               ? entry.suggestedBrands
                   .filter((name: unknown): name is string => typeof name === 'string')
-                  .filter((name) => BRAND_CATALOG.some((brand) => brand.name === name))
+                  .filter((name: string) => BRAND_CATALOG.some((brand) => brand.name === name))
               : [],
             priceAnchors: typeof entry.priceAnchors === 'string' ? entry.priceAnchors : '$100-$200',
             reason: typeof entry.reason === 'string' ? entry.reason : 'Complements your wardrobe.',

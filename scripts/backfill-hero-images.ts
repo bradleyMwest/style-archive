@@ -1,5 +1,5 @@
 import { prisma } from '../app/lib/prisma';
-import { downloadHeroImage } from '../app/lib/hero-image';
+import { downloadHeroImage, toHeroImageBytes } from '../app/lib/hero-image';
 
 const parseImages = (raw: string | null): string[] => {
   if (!raw) return [];
@@ -51,7 +51,7 @@ async function backfill() {
     await prisma.item.update({
       where: { id: item.id },
       data: {
-        heroImageData: downloaded.data,
+        heroImageData: toHeroImageBytes(downloaded.data),
         heroImageMimeType: downloaded.mimeType,
       },
     });

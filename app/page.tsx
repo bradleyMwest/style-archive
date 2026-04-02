@@ -1,4 +1,7 @@
-export default function Home() {
+import { requireUser } from "./lib/auth";
+
+export default async function Home() {
+  await requireUser();
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
       <div className="text-center">

@@ -2,6 +2,7 @@ import InventoryClient from './InventoryClient';
 import { prisma } from '../lib/prisma';
 import { buildCachedHeroImage } from '../lib/hero-image';
 import type { Item } from '../lib/types';
+import { requireUser } from '../lib/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,12 +27,13 @@ function parseImages(rawImages: string | null): string[] {
   }
 }
 
-async function getInventoryItems(): Promise<Item[]> {
+async function getInventoryItems(userId: string): Promise<Item[]> {
   const items = await prisma.item.findMany({
+    where: { userId },
     orderBy: { dateAdded: 'desc' },
   });
 
-  return items.map((item) => ({
+  return items.map((item: (typeof items)[number]) => ({
     id: item.id,
     name: item.name,
     type: item.type,
@@ -53,6 +55,7 @@ async function getInventoryItems(): Promise<Item[]> {
 }
 
 export default async function InventoryPage() {
-  const items = await getInventoryItems();
+  const user = await requireUser();
+  const items = await getInventoryItems(user.id);
   return <InventoryClient items={items} />;
 }

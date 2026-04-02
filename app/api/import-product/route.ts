@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { importProductFromUrl } from '../../lib/importer/import-product';
+import { getRequestUser } from '../../lib/api-auth';
 
 export const runtime = 'nodejs';
 
 export async function POST(request: NextRequest) {
+  const user = await getRequestUser(request);
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   try {
     const { url, preferPlaywright } = await request.json();
 

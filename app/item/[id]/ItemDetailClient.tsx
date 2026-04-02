@@ -24,6 +24,22 @@ type ItemDetail = {
   };
 };
 
+type FormState = {
+  name: string;
+  brand: string;
+  type: string;
+  color: string;
+  size: string;
+  material: string;
+  description: string;
+  listingUrl: string;
+  image: string;
+  imagesInput: string;
+  tagsInput: string;
+  priceAmount: string;
+  priceCurrency: string;
+};
+
 interface ItemDetailClientProps {
   item: ItemDetail;
 }
@@ -46,13 +62,16 @@ const formatImagesInput = (images: string[]) => images.join('\n');
 const normalizePriceAmount = (value: number | undefined) =>
   typeof value === 'number' && !Number.isNaN(value) ? value.toString() : '';
 
+type DetailField = keyof Pick<ItemDetail, 'type' | 'color' | 'size' | 'material'>;
+const DETAIL_FIELDS: DetailField[] = ['type', 'color', 'size', 'material'];
+
 export default function ItemDetailClient({ item }: ItemDetailClientProps) {
   const [viewItem, setViewItem] = useState(item);
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [form, setForm] = useState(() => ({
+  const [form, setForm] = useState<FormState>(() => ({
     name: item.name,
     brand: item.brand || '',
     type: item.type,
@@ -311,20 +330,20 @@ export default function ItemDetailClient({ item }: ItemDetailClientProps) {
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            {['type', 'color', 'size', 'material'].map((field) => (
+            {DETAIL_FIELDS.map((field) => (
               <div key={field}>
                 <h3 className="text-sm font-medium text-gray-500 capitalize">{field}</h3>
                 {isEditing ? (
                   <input
                     type="text"
                     name={field}
-                    value={(form as Record<string, string>)[field] || ''}
+                    value={form[field] || ''}
                     onChange={handleChange}
                     className="mt-1 w-full rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                   />
                 ) : (
                   <p className="text-lg text-gray-900">
-                    {renderText((viewItem as Record<string, string | undefined>)[field])}
+                    {renderText(viewItem[field])}
                   </p>
                 )}
               </div>

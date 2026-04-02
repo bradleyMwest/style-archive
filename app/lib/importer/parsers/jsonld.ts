@@ -82,11 +82,22 @@ export const parseJsonLd = ($: CheerioAPI): ParserResult | null => {
   if (!productNode) return null;
 
   const images = extractImages(productNode.image);
-  const price = typeof productNode.offers === 'object' ? parsePriceText(productNode.offers.price || productNode.offers.priceSpecification?.price) : undefined;
-  const currencyFromOffer =
-    typeof productNode.offers === 'object'
-      ? productNode.offers.priceCurrency || productNode.offers.priceSpecification?.priceCurrency
-      : undefined;
+  type OfferNode = {
+    price?: string;
+    priceCurrency?: string;
+    priceSpecification?: {
+      price?: string;
+      priceCurrency?: string;
+    };
+  };
+  const offer: OfferNode | null =
+    typeof productNode.offers === 'object' && productNode.offers
+      ? (productNode.offers as OfferNode)
+      : null;
+  const price = offer ? parsePriceText(offer.price || offer.priceSpecification?.price) : undefined;
+  const currencyFromOffer = offer
+    ? offer.priceCurrency || offer.priceSpecification?.priceCurrency
+    : undefined;
 
   const priceWithCurrency = price
     ? {

@@ -71,6 +71,12 @@ type CachedImageArgs = {
   fallbackUrl: string;
 };
 
+export const toHeroImageBytes = (input: Buffer | Uint8Array): Uint8Array<ArrayBuffer> => {
+  const copy = new Uint8Array(input.byteLength) as Uint8Array<ArrayBuffer>;
+  copy.set(input);
+  return copy;
+};
+
 export const buildCachedHeroImage = ({ data, mimeType, fallbackUrl }: CachedImageArgs) => {
   if (data && (data as Buffer).length > 0) {
     const buffer = Buffer.isBuffer(data) ? data : Buffer.from(data);

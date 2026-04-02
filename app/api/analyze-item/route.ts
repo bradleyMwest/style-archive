@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { load, CheerioAPI } from 'cheerio';
 import { isLikelyShopifyProductUrl, normalizeShopifyMetadata, type ShopifyProduct } from '../../lib/shopify';
 import { fetchShopifyProduct } from '../../lib/shopify-fetch';
+import { getRequestUser } from '../../lib/api-auth';
 
 const IMAGE_ATTRS = ['data-src', 'data-original', 'data-image', 'data-lazy-src', 'data-hi-res-src', 'src'];
 const SRCSET_ATTRS = ['data-srcset', 'data-src-set', 'srcset'];
@@ -114,6 +115,11 @@ const openai = new OpenAI({
 });
 
 export async function POST(request: NextRequest) {
+  const user = await getRequestUser(request);
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   try {
     const { input, type } = await request.json(); // type: 'url', 'listing', or 'description'
 

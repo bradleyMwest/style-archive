@@ -1,6 +1,7 @@
 import { prisma } from '../../lib/prisma';
 import { buildCachedHeroImage } from '../../lib/hero-image';
 import CreateOutfitClient from './CreateOutfitClient';
+import { requireUser } from '../../lib/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,7 +20,9 @@ const normalizeItem = (item: Awaited<ReturnType<typeof prisma.item.findFirst>>) 
 });
 
 export default async function CreateOutfitPage() {
+  const user = await requireUser();
   const items = await prisma.item.findMany({
+    where: { userId: user.id },
     orderBy: { dateAdded: 'desc' },
   });
 
