@@ -21,7 +21,7 @@ type ShopifyImage = {
   src?: string;
 };
 
-type ShopifyProduct = {
+export type ShopifyProduct = {
   title?: string;
   product_type?: string;
   tags?: string | string[];

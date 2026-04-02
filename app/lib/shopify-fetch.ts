@@ -1,4 +1,4 @@
-import { SHOPIFY_PRODUCT_PATH } from './shopify';
+import { SHOPIFY_PRODUCT_PATH, type ShopifyProduct } from './shopify';
 
 const SHOPIFY_JSON_HEADERS = {
   'User-Agent':
@@ -26,17 +26,21 @@ type ShopifyPayload = {
   products?: unknown[];
 };
 
-const extractShopifyProduct = (payload: unknown) => {
+const extractShopifyProduct = (payload: unknown): ShopifyProduct | null => {
   if (!payload || typeof payload !== 'object') return null;
   const candidate = payload as ShopifyPayload;
-  if (candidate.product) return candidate.product;
-  if (Array.isArray(candidate.products) && candidate.products.length > 0) {
-    return candidate.products[0];
-  }
-  return payload;
+  const productCandidate = candidate.product
+    ? candidate.product
+    : Array.isArray(candidate.products) && candidate.products.length > 0
+      ? candidate.products[0]
+      : payload;
+
+  return typeof productCandidate === 'object' && productCandidate !== null
+    ? (productCandidate as ShopifyProduct)
+    : null;
 };
 
-export const fetchShopifyProduct = async (url: string): Promise<unknown> => {
+export const fetchShopifyProduct = async (url: string): Promise<ShopifyProduct> => {
   if (!SHOPIFY_PRODUCT_PATH.test(new URL(url).pathname)) {
     throw new Error('URL does not appear to be a Shopify product path');
   }
