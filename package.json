@@ -9,7 +9,8 @@
     "lint": "eslint",
     "test:shopify": "tsx scripts/test-shopify-metadata.ts",
     "backfill:hero-images": "tsx scripts/backfill-hero-images.ts",
-    "backfill:prices": "tsx scripts/backfill-prices.ts"
+    "backfill:prices": "tsx scripts/backfill-prices.ts",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
     "@prisma/adapter-better-sqlite3": "^7.6.0",
