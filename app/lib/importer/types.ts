@@ -1,6 +1,8 @@
 export type ImportSourceId =
   | 'json_ld'
   | 'open_graph'
+  | 'next_data'
+  | 'meta_product'
   | 'selectors'
   | 'playwright_render'
   | 'retailer_strategy'
@@ -53,4 +55,5 @@ export interface ImportSourceTrace {
 export interface ImportProductOptions {
   preferPlaywright?: boolean;
   playwrightTimeoutMs?: number;
+  skipLlm?: boolean;
 }
