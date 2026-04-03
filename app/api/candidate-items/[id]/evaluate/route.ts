@@ -8,6 +8,18 @@ import { evaluateCandidate } from '../../../../lib/candidate-evaluator';
 
 export const runtime = 'nodejs';
 
+type WardrobeSelection = {
+  id: string;
+  type: string | null;
+  color: string | null;
+  tags: string | null;
+  brand: string | null;
+  material: string | null;
+  name: string | null;
+  listingUrl: string | null;
+  image: string | null;
+}[];
+
 type WardrobeHashEntry = {
   id: string;
   type: string | null;
@@ -21,7 +33,7 @@ type WardrobeHashEntry = {
 };
 
 const serializeWardrobeForHash = (
-  wardrobe: Awaited<ReturnType<typeof prisma.item.findMany>>
+  wardrobe: WardrobeSelection
 ): WardrobeHashEntry[] =>
   wardrobe
     .map((item) => ({

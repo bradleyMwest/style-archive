@@ -322,7 +322,7 @@ export const evaluateCandidate = async (
     })
   );
   const redundantMatches = redundantMatchesRaw.filter(
-    (item): item is WardrobeItem => Boolean(item)
+    (item): item is (typeof similarItems)[number] => Boolean(item)
   );
   const redundancyScore = clampScore(
     similarItems.length === 0 ? 15 : (redundantMatches.length / Math.max(similarItems.length, 1)) * 100

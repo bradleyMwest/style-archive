@@ -47,7 +47,7 @@ export const recordProductUrl = async ({
         domain: normalized.domain,
         source: source ?? null,
         userId: userId ?? null,
-        extra: extra ?? null,
+        extra: extra ?? undefined,
       },
       update: {
         normalizedUrl: normalized.normalizedPath,

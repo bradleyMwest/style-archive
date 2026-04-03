@@ -2,6 +2,7 @@ import { load } from 'cheerio';
 import { parseJsonLd } from './parsers/jsonld';
 import { parseOpenGraph } from './parsers/openGraph';
 import { parseSimpleSelectors } from './parsers/simpleSelectors';
+import { parseMetaProduct } from './parsers/metaProduct';
 import { renderWithPlaywright } from './playwright';
 import {
   applyParserResult,
@@ -37,7 +38,7 @@ const SESSION_BOOTSTRAP_HEADERS = {
   ...BROWSER_HEADERS,
 };
 
-const parserSequence = [parseJsonLd, parseOpenGraph, parseSimpleSelectors];
+const parserSequence = [parseJsonLd, parseOpenGraph, parseMetaProduct, parseSimpleSelectors];
 
 type RetailerStrategy = {
   matcher: (url: URL) => boolean;
@@ -70,6 +71,194 @@ const retailerStrategies: RetailerStrategy[] = [
     },
   },
 ];
+
+type ProductOptionValue = {
+  value?: string;
+  displayName?: string;
+};
+
+type ProductOption = {
+  name?: string;
+  values?: ProductOptionValue[];
+};
+
+type ProductImage = {
+  options?: {
+    name?: string;
+    values?: string[];
+  }[];
+  image?: {
+    url?: string;
+  };
+};
+
+type ProductVariantOption = {
+  name?: string;
+  value?: string;
+};
+
+type ProductVariant = {
+  price?: number | string;
+  options?: ProductVariantOption[];
+};
+
+type NextDataProduct = {
+  id?: string | number;
+  slug?: string;
+  title?: string;
+  description?: string;
+  productTypeName?: string;
+  productBrandInfo?: {
+    brandName?: string;
+  };
+  productOptions?: ProductOption[];
+  images?: ProductImage[];
+  variants?: ProductVariant[];
+};
+
+const slugify = (value?: string | null) =>
+  value ? value.toString().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') : '';
+
+const ensureAbsoluteUrl = (input: string | null | undefined, base: URL) => {
+  if (!input) return null;
+  if (input.startsWith('http://') || input.startsWith('https://')) {
+    return input;
+  }
+  if (input.startsWith('//')) {
+    return `${base.protocol}${input}`;
+  }
+  if (input.startsWith('/')) {
+    return `${base.origin}${input}`;
+  }
+  return input;
+};
+
+const normalizeProductType = (typeValue?: string | null, title?: string | null) => {
+  const target = `${typeValue || ''} ${title || ''}`.toLowerCase();
+  if (/(dress|gown|skirt)/.test(target)) return 'dress';
+  if (/(jacket|coat|blazer|outerwear)/.test(target)) return 'jacket';
+  if (/(shoe|sneaker|boot|loafer|sandal|heel)/.test(target)) return 'shoes';
+  if (/(pant|trouser|chino|jean|denim|short|legging)/.test(target)) return 'pants';
+  if (/(shirt|tee|t-shirt|top|sweater|hoodie|polo|henley)/.test(target)) return 'shirt';
+  if (/(bag|belt|hat|cap|scarf|glove|sock|wallet|accessor)/.test(target)) return 'accessory';
+  return undefined;
+};
+
+const extractNextDataProduct = (html: string): NextDataProduct | null => {
+  const match = html.match(/<script id="__NEXT_DATA__" type="application\/json">([^<]+)<\/script>/);
+  if (!match) return null;
+  try {
+    const payload = JSON.parse(match[1]);
+    return payload?.props?.pageProps?.pageData?.context?.pageDataJson?.product ?? null;
+  } catch (error) {
+    console.warn('Unable to parse __NEXT_DATA__ payload', error);
+    return null;
+  }
+};
+
+const buildNextDataParserResult = (product: NextDataProduct, normalizedUrl: URL): ParserOutcome | null => {
+  if (!product) return null;
+
+  const colorSlug = slugify(normalizedUrl.searchParams.get('color'));
+  const sizeSlug = slugify(normalizedUrl.searchParams.get('size'));
+  const colorOption = product?.productOptions?.find(
+    (opt) => opt?.name?.toLowerCase() === 'color'
+  );
+
+  const matchedColorValue = colorOption?.values?.find((entry) => {
+    const value = entry?.value || entry?.displayName;
+    return value && slugify(value) === colorSlug;
+  });
+  const selectedColor = matchedColorValue?.value || matchedColorValue?.displayName || null;
+  const selectedColorSlug = slugify(selectedColor);
+
+  const images = product.images ?? [];
+
+  const selectedImages =
+    selectedColorSlug.length > 0
+      ? images.filter((entry) =>
+          entry?.options?.some(
+            (opt) =>
+              opt?.name?.toLowerCase() === 'color' &&
+              opt?.values?.some((value) => slugify(value) === selectedColorSlug)
+          )
+        )
+      : [];
+
+  const orderedImages = [...selectedImages, ...images]
+    .map((entry) => ensureAbsoluteUrl(entry?.image?.url ?? null, normalizedUrl))
+    .filter((url): url is string => typeof url === 'string')
+    .filter((url, index, arr) => arr.indexOf(url) === index);
+
+  const variants = product.variants ?? [];
+  const matchedVariant =
+    variants.find((variant) => {
+      const colorValue = slugify(
+        variant?.options?.find((opt) => opt?.name?.toLowerCase() === 'color')?.value
+      );
+      const sizeValue = slugify(
+        variant?.options?.find((opt) => opt?.name?.toLowerCase() === 'size')?.value
+      );
+      const colorMatches = selectedColorSlug ? colorValue === selectedColorSlug : true;
+      const sizeMatches = sizeSlug ? sizeValue === sizeSlug : true;
+      return colorMatches && sizeMatches;
+    }) || variants[0];
+
+  const priceAmount =
+    typeof matchedVariant?.price === 'number'
+      ? matchedVariant.price
+      : matchedVariant?.price
+        ? Number(matchedVariant.price)
+        : undefined;
+
+  const typeValue = normalizeProductType(product?.productTypeName, product?.title);
+
+  const baseTitle = product?.title ?? '';
+  const computedTitle =
+    baseTitle && selectedColor ? `${baseTitle} (${selectedColor})` : baseTitle || selectedColor || undefined;
+
+  const fields: ParserOutcome['fields'] = {
+    title: computedTitle,
+    description: product?.description ?? undefined,
+    brand: product?.productBrandInfo?.brandName ?? undefined,
+    color: selectedColor ?? undefined,
+    type: typeValue,
+    images: orderedImages.length > 0 ? orderedImages : undefined,
+    tags: selectedColor ? [selectedColor] : undefined,
+    price: priceAmount
+      ? {
+          amount: priceAmount,
+          currency: 'USD',
+        }
+      : undefined,
+  };
+
+  const hasData = Object.values(fields).some((value) => {
+    if (Array.isArray(value)) return value.length > 0;
+    return Boolean(value);
+  });
+
+  if (!hasData) {
+    return null;
+  }
+
+  return parserResult(
+    'next_data',
+    fields,
+    { productId: product?.id, slug: product?.slug, color: selectedColor },
+    '__NEXT_DATA__ product payload'
+  );
+};
+
+const inferDraftType = (draft: ProductImportDraft, normalizedUrl: URL) => {
+  if (draft.type) return;
+  const guess =
+    normalizeProductType(draft.type, draft.title) ||
+    normalizeProductType(undefined, normalizedUrl.pathname.replace(/[-_/]/g, ' '));
+  if (guess) {
+    draft.type = guess;
+  }
+};
 
 const extractCookieHeader = (response: Response) => {
   type HeadersWithSetCookie = Headers & { getSetCookie?: () => string[] };
@@ -160,6 +349,13 @@ export const importProductFromUrl = async (
   try {
     const html = await fetchHtml(normalizedUrl.href);
     runParsers(draft, html, false);
+    const nextProduct = extractNextDataProduct(html);
+    if (nextProduct) {
+      const nextResult = buildNextDataParserResult(nextProduct, normalizedUrl);
+      if (nextResult) {
+        applyParserResult(draft, nextResult, { wasFallback: false, overwriteExisting: true });
+      }
+    }
   } catch (error) {
     recordWarning(draft, `Primary fetch failed: ${(error as Error).message}`);
   }
@@ -185,10 +381,14 @@ export const importProductFromUrl = async (
     }
   }
 
-  const llmResult = await enrichDraftWithLlm(draft);
-  if (llmResult) {
-    applyParserResult(draft, llmResult, { wasFallback: true });
+  if (!options?.skipLlm) {
+    const llmResult = await enrichDraftWithLlm(draft);
+    if (llmResult) {
+      applyParserResult(draft, llmResult, { wasFallback: true });
+    }
   }
+
+  inferDraftType(draft, normalizedUrl);
 
   return draft;
 };

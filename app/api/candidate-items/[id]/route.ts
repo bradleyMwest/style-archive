@@ -34,15 +34,17 @@ const normalizePriceAmount = (value: unknown) => {
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const user = await getRequestUser(request);
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  const { id } = await params;
+
   const candidate = await prisma.candidateItem.findFirst({
-    where: { id: params.id, userId: user.id },
+    where: { id, userId: user.id },
     include: { evaluation: true },
   });
 

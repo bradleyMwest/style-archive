@@ -73,52 +73,66 @@ export const createEmptyDraft = (url: string): ProductImportDraft => ({
 export const applyParserResult = (
   draft: ProductImportDraft,
   result: ParserResult,
-  options: { wasFallback: boolean }
+  options: { wasFallback: boolean; overwriteExisting?: boolean }
 ) => {
   const usedFields: (keyof typeof result.fields)[] = [];
   const { fields } = result;
+  const allowOverwrite = Boolean(options.overwriteExisting);
 
-  if (fields.title && !draft.title) {
-    draft.title = fields.title.trim();
-    usedFields.push('title');
-  }
+  const assignString = (value: string | undefined, targetKey: keyof ProductImportDraft) => {
+    if (!value) return;
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    const current = draft[targetKey];
+    if (!current || allowOverwrite) {
+      (draft as unknown as Record<string, unknown>)[targetKey] = trimmed;
+      usedFields.push(targetKey as keyof typeof result.fields);
+    }
+  };
 
-  if (fields.brand && !draft.brand) {
-    draft.brand = fields.brand.trim();
-    usedFields.push('brand');
-  }
-
-  if (fields.color && !draft.color) {
-    draft.color = fields.color.trim();
-    usedFields.push('color');
-  }
-
-  if (fields.description && !draft.description) {
-    draft.description = fields.description.trim();
-    usedFields.push('description');
-  }
-
-  if (fields.sku && !draft.sku) {
-    draft.sku = fields.sku.trim();
-    usedFields.push('sku');
-  }
+  assignString(fields.title, 'title');
+  assignString(fields.brand, 'brand');
+  assignString(fields.type, 'type');
+  assignString(fields.color, 'color');
+  assignString(fields.size, 'size');
+  assignString(fields.material, 'material');
+  assignString(fields.description, 'description');
+  assignString(fields.sku, 'sku');
 
   if (fields.price) {
+    const chooseValue = <T>(current: T | undefined, incoming: T | undefined): T | undefined =>
+      allowOverwrite ? incoming ?? current : current ?? incoming;
     draft.price = {
-      amount: draft.price?.amount ?? fields.price.amount,
-      currency: draft.price?.currency ?? fields.price.currency,
-      text: draft.price?.text ?? fields.price.text,
+      amount: chooseValue(draft.price?.amount, fields.price.amount),
+      currency: chooseValue(draft.price?.currency, fields.price.currency),
+      text: chooseValue(draft.price?.text, fields.price.text),
     };
     usedFields.push('price');
   }
 
+  if (Array.isArray(fields.tags) && fields.tags.length > 0) {
+    const normalizedTags = dedupeStrings(fields.tags);
+    if (normalizedTags.length > 0) {
+      if (allowOverwrite || !draft.tags || draft.tags.length === 0) {
+        draft.tags = normalizedTags;
+      } else {
+        draft.tags = dedupeStrings([...(draft.tags ?? []), ...normalizedTags]);
+      }
+      usedFields.push('tags');
+    }
+  }
+
   if (Array.isArray(fields.images) && fields.images.length > 0) {
-    const before = draft.images.length;
     const additions = fields.images
       .map((src) => normalizeImageCandidate(src, draft.url))
       .filter((src): src is string => Boolean(src));
-    draft.images = dedupeStrings([...draft.images, ...additions]);
-    if (draft.images.length > before) {
+    const before = draft.images.length;
+    if (allowOverwrite) {
+      draft.images = dedupeStrings([...additions, ...draft.images]);
+    } else {
+      draft.images = dedupeStrings([...draft.images, ...additions]);
+    }
+    if (draft.images.length !== before) {
       usedFields.push('images');
     }
   }

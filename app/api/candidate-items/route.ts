@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
             : null,
         priceCurrency: draft.price?.currency ?? null,
         status: 'ready',
-        rawImport: draft as unknown as Prisma.JsonValue,
+        rawImport: draft as unknown as Prisma.InputJsonValue,
       },
       include: { evaluation: true },
     });
