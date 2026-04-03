@@ -83,6 +83,34 @@ export default function InventoryClient({ items }: InventoryClientProps) {
   }, [localItems, filterType, filterBrand, searchTerm, sortDirection, sortKey]);
 
   const hasMatches = filteredAndSortedItems.length > 0;
+  const categoryCoverage = useMemo(() => {
+    if (localItems.length === 0) {
+      return {
+        total: 0,
+        uniqueCount: 0,
+        topCategory: null as null | { type: string; count: number },
+        gaps: [] as Array<{ type: string; count: number }>,
+      };
+    }
+    const counts: Record<string, number> = {};
+    localItems.forEach((item) => {
+      const key = item.type || 'Uncategorized';
+      counts[key] = (counts[key] ?? 0) + 1;
+    });
+    const sorted = Object.entries(counts)
+      .map(([type, count]) => ({ type, count }))
+      .sort((a, b) => b.count - a.count);
+    const average = localItems.length / Math.max(sorted.length, 1);
+    const underrepresented = sorted
+      .filter((entry) => entry.count <= Math.max(1, Math.floor(average / 2)))
+      .slice(-3);
+    return {
+      total: localItems.length,
+      uniqueCount: sorted.length,
+      topCategory: sorted[0],
+      gaps: underrepresented,
+    };
+  }, [localItems]);
 
   const handleDelete = async (id: string) => {
     const item = localItems.find((entry) => entry.id === id);
@@ -132,6 +160,54 @@ export default function InventoryClient({ items }: InventoryClientProps) {
           Add Item
         </Link>
       </div>
+
+      {categoryCoverage.total > 0 && (
+        <div className="mb-6 rounded-2xl border border-indigo-100 bg-indigo-50/80 p-5">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-xs uppercase text-indigo-500">Wardrobe coverage</p>
+              <h2 className="text-lg font-semibold text-indigo-900">Spot potential gaps</h2>
+              <p className="text-sm text-indigo-800">
+                The product requirements call for gap analysis—this summary shows how evenly your wardrobe is
+                spread across categories before you evaluate the next item.
+              </p>
+            </div>
+            <div className="flex gap-6 text-sm text-indigo-900">
+              <div>
+                <p className="text-xs uppercase text-indigo-500">Items</p>
+                <p className="text-2xl font-semibold">{categoryCoverage.total}</p>
+              </div>
+              <div>
+                <p className="text-xs uppercase text-indigo-500">Categories tracked</p>
+                <p className="text-2xl font-semibold">{categoryCoverage.uniqueCount}</p>
+              </div>
+              {categoryCoverage.topCategory && (
+                <div>
+                  <p className="text-xs uppercase text-indigo-500">Most represented</p>
+                  <p className="text-2xl font-semibold">
+                    {categoryCoverage.topCategory.type} · {categoryCoverage.topCategory.count}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+          {categoryCoverage.gaps.length > 0 && (
+            <div className="mt-4">
+              <p className="text-xs uppercase text-indigo-500">Underrepresented categories</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {categoryCoverage.gaps.map((gap) => (
+                  <span
+                    key={gap.type}
+                    className="rounded-full bg-white px-3 py-1 text-sm font-medium text-indigo-800 shadow-sm"
+                  >
+                    {gap.type} · {gap.count}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="mb-6 flex flex-wrap gap-4 items-center">
         <div className="flex items-center gap-2">
