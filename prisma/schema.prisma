@@ -36,6 +36,52 @@ model Item {
   @@index([userId])
 }
 
+model CandidateItem {
+  id            String           @id @default(cuid())
+  userId        String
+  url           String
+  sourceDomain  String?
+  title         String?
+  brand         String?
+  type          String?
+  color         String?
+  size          String?
+  material      String?
+  tags          String?
+  heroImage     String?
+  images        String?
+  priceAmount   Decimal?
+  priceCurrency String?
+  description   String?
+  notes         String?
+  status        CandidateStatus @default(draft)
+  rawImport     Json?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  user       User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  evaluation CandidateEvaluation?
+
+  @@index([userId])
+}
+
+model CandidateEvaluation {
+  id                 String           @id @default(cuid())
+  candidateId        String           @unique
+  verdict            CandidateVerdict
+  explanation        String?
+  compatibilityScore Int?
+  redundancyScore    Int?
+  gapScore           Int?
+  versatilityScore   Int?
+  reasoning          Json?
+  inputHash          String?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  candidate CandidateItem @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+}
+
 model OutfitSuggestion {
   id          String   @id @default(cuid())
   name        String
@@ -79,6 +125,8 @@ model User {
   outfits      Outfit[]
   outfitSuggestions OutfitSuggestion[]
   styleProfile StyleProfile?
+  candidateItems CandidateItem[]
+  productUrls ProductUrl[]
 }
 
 model StyleProfile {
@@ -113,4 +161,56 @@ model Session {
 
   @@index([userId])
   @@index([expiresAt])
+}
+
+model RetailProduct {
+  id           String   @id @default(cuid())
+  retailer     String
+  listingUrl   String   @unique
+  name         String
+  type         String?
+  color        String?
+  sizeSummary  String?
+  heroImage    String?
+  gallery      String?
+  description  String?
+  tags         String?
+  material     String?
+  brand        String?
+  priceAmount  Decimal?
+  priceCurrency String?
+  metadata     Json?
+  reviews      Json?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model ProductUrl {
+  id             String   @id @default(cuid())
+  url            String   @unique
+  normalizedUrl  String?
+  domain         String?
+  source         String?
+  userId         String?
+  firstSeenAt    DateTime @default(now())
+  lastSeenAt     DateTime @default(now()) @updatedAt
+  extra          Json?
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([domain])
+  @@index([userId])
+}
+
+enum CandidateStatus {
+  draft
+  ready
+  evaluated
+  archived
+}
+
+enum CandidateVerdict {
+  buy
+  maybe
+  pass
 }

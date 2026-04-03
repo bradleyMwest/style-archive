@@ -10,19 +10,23 @@
     "test:shopify": "tsx scripts/test-shopify-metadata.ts",
     "backfill:hero-images": "tsx scripts/backfill-hero-images.ts",
     "backfill:prices": "tsx scripts/backfill-prices.ts",
+    "backfill:product-urls": "tsx scripts/backfill-product-urls.ts",
+    "backup:export": "tsx scripts/export-db-backup.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.6.0",
     "@prisma/client": "^7.6.0",
     "cheerio": "^1.2.0",
+    "fast-xml-parser": "^5.5.9",
     "next": "16.2.2",
     "openai": "^6.33.0",
     "pg": "^8.20.0",
     "playwright": "^1.59.0",
     "prisma": "^7.6.0",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "sharp": "^0.34.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

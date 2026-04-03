@@ -3,6 +3,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { prisma } from '../app/lib/prisma';
+import { hashPassword } from '../app/lib/passwords';
 
 type SqliteItem = {
   id: string;
@@ -44,6 +45,16 @@ type SqliteSuggestion = {
   updatedAt: string;
 };
 
+type SqliteUser = {
+  id: string;
+  email: string;
+  passwordHash: string;
+  name: string | null;
+  role: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+};
+
 const projectRoot = path.resolve(__dirname, '..');
 const sqlitePath = path.join(projectRoot, 'dev.db');
 
@@ -71,12 +82,32 @@ function runSqliteQuery<T>(sql: string): T[] {
 }
 
 async function migrateData() {
-  const primaryUser = await prisma.user.findUnique({
-    where: { email: 'bradwest2@gmail.com' },
+  const primaryEmail = 'bradwest2@gmail.com';
+  const sqliteUsers = runSqliteQuery<SqliteUser>(`
+    SELECT id, email, passwordHash, name, role, createdAt, updatedAt
+    FROM User
+    WHERE email = '${primaryEmail}';
+  `);
+  const primarySqliteUser = sqliteUsers[0];
+
+  let primaryUser = await prisma.user.findUnique({
+    where: { email: primaryEmail },
   });
 
   if (!primaryUser) {
-    throw new Error('Primary user bradwest2@gmail.com not found in Postgres');
+    const passwordHashValue = primarySqliteUser?.passwordHash ?? hashPassword('password123');
+    primaryUser = await prisma.user.create({
+      data: {
+        id: primarySqliteUser?.id,
+        email: primaryEmail,
+        passwordHash: passwordHashValue,
+        name: primarySqliteUser?.name ?? null,
+        role: primarySqliteUser?.role ?? 'user',
+        createdAt: primarySqliteUser?.createdAt ? new Date(primarySqliteUser.createdAt) : undefined,
+        updatedAt: primarySqliteUser?.updatedAt ? new Date(primarySqliteUser.updatedAt) : undefined,
+      },
+    });
+    console.log(`Created primary user ${primaryEmail} in Postgres.`);
   }
 
   const primaryUserId = primaryUser.id;

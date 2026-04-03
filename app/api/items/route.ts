@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '../../lib/prisma';
 import { buildCachedHeroImage, downloadHeroImage, toHeroImageBytes } from '../../lib/hero-image';
 import { getRequestUser } from '../../lib/api-auth';
+import { recordProductUrl } from '../../lib/product-url';
 
 type HeroImageBytes = ReturnType<typeof toHeroImageBytes>;
 
@@ -125,6 +126,15 @@ export async function POST(request: NextRequest) {
         userId: user.id,
       },
     });
+
+    if (listingUrl && typeof listingUrl === 'string' && listingUrl.trim().length > 0) {
+      await recordProductUrl({
+        url: listingUrl,
+        userId: user.id,
+        source: 'wardrobe-item',
+        extra: { itemId: item.id },
+      });
+    }
 
     return NextResponse.json(item, { status: 201 });
   } catch (error) {
